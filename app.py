@@ -1,5 +1,6 @@
 import json
 from datetime import date, datetime
+from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -67,23 +68,52 @@ if "plan_config" not in st.session_state:
       ],
   }
 
+# Initialize widget session states from plan_config if not already set
 cfg = st.session_state.plan_config
+if "w_start_date" not in st.session_state:
+  st.session_state["w_start_date"] = datetime.strptime(
+      cfg["start_date"], "%Y-%m-%d"
+  ).date()
+if "w_months" not in st.session_state:
+  st.session_state["w_months"] = cfg["months"]
+if "w_chk_bal" not in st.session_state:
+  st.session_state["w_chk_bal"] = float(cfg["checking_balance"])
+if "w_chk_apy" not in st.session_state:
+  st.session_state["w_chk_apy"] = float(cfg["checking_apy"])
+if "w_sav_bal" not in st.session_state:
+  st.session_state["w_sav_bal"] = float(cfg["savings_balance"])
+if "w_sav_apy" not in st.session_state:
+  st.session_state["w_sav_apy"] = float(cfg["savings_apy"])
+if "w_min_buf" not in st.session_state:
+  st.session_state["w_min_buf"] = float(cfg["min_checking_buffer"])
 
 st.title("💰 Modern Financial Planner (Daily & Monthly Engine)")
 st.markdown(
-    "Simulate accounts with exact daily transactions, browser file upload/save,"
-    " editable recurring flows, buffer sweeps, and monthly APY compounding."
+    "Simulate accounts with exact daily transactions, fully synchronized file"
+    " loading, editable recurring flows, buffer sweeps, and monthly APY"
+    " compounding."
 )
 
 # --- 3. SIDEBAR: BROWSER FILE UPLOAD / DOWNLOAD ---
 st.sidebar.header("6. Save / Load Plan")
 
-# --- LOAD PLAN FROM FILE BROWSER ---
 uploaded_file = st.sidebar.file_uploader("Load Plan JSON", type=["json"])
 if uploaded_file is not None:
   try:
     loaded_data = json.load(uploaded_file)
     st.session_state.plan_config = loaded_data
+
+    # Synchronize widget session state keys so UI updates immediately
+    st.session_state["w_start_date"] = datetime.strptime(
+        loaded_data["start_date"], "%Y-%m-%d"
+    ).date()
+    st.session_state["w_months"] = loaded_data["months"]
+    st.session_state["w_chk_bal"] = float(loaded_data["checking_balance"])
+    st.session_state["w_chk_apy"] = float(loaded_data["checking_apy"])
+    st.session_state["w_sav_bal"] = float(loaded_data["savings_balance"])
+    st.session_state["w_sav_apy"] = float(loaded_data["savings_apy"])
+    st.session_state["w_min_buf"] = float(loaded_data["min_checking_buffer"])
+
     st.sidebar.success("Plan loaded successfully!")
     st.rerun()
   except Exception as e:
@@ -91,7 +121,6 @@ if uploaded_file is not None:
 
 st.sidebar.markdown("---")
 
-# --- SAVE / EXPORT PLAN TO FILE ---
 plan_json_str = json.dumps(st.session_state.plan_config, indent=2)
 st.sidebar.download_button(
     label="Download Plan JSON",
@@ -102,42 +131,37 @@ st.sidebar.download_button(
 
 cfg = st.session_state.plan_config
 
-# --- 4. SIDEBAR INPUTS ---
+# --- 4. SIDEBAR INPUTS (BOUND TO WIDGET SESSION STATE KEYS) ---
 st.sidebar.header("1. Starting Conditions")
-parsed_start_date = datetime.strptime(cfg["start_date"], "%Y-%m-%d").date()
-start_date = st.sidebar.date_input("Simulation Start Date", value=parsed_start_date)
+start_date = st.sidebar.date_input(
+    "Simulation Start Date", key="w_start_date"
+)
 months_to_simulate = st.sidebar.slider(
-    "Simulation Horizon (Months)", 1, 60, int(cfg.get("months", 12)), 1
+    "Simulation Horizon (Months)", 1, 60, key="w_months", step=1
 )
 
 checking_balance = st.sidebar.number_input(
-    "Starting Checking Balance ($)",
-    value=float(cfg["checking_balance"]),
-    step=500.0,
+    "Starting Checking Balance ($)", key="w_chk_bal", step=500.0
 )
 checking_apy = (
     st.sidebar.slider(
-        "Checking APY (%)", 0.0, 5.0, float(cfg["checking_apy"]), 0.1
+        "Checking APY (%)", 0.0, 5.0, key="w_chk_apy", step=0.1
     )
     / 100.0
 )
 
 savings_balance = st.sidebar.number_input(
-    "Starting Savings Balance ($)",
-    value=float(cfg["savings_balance"]),
-    step=1000.0,
+    "Starting Savings Balance ($)", key="w_sav_bal", step=1000.0
 )
 savings_apy = (
-    st.sidebar.slider(
-        "Savings APY (%)", 0.0, 10.0, float(cfg["savings_apy"]), 0.1
-    )
+    st.sidebar.slider("Savings APY (%)", 0.0, 10.0, key="w_sav_apy", step=0.1)
     / 100.0
 )
 
 st.sidebar.header("2. Transfer Rules")
 min_checking_buffer = st.sidebar.number_input(
     "Min Checking Buffer ($) [Sweep excess to savings]",
-    value=float(cfg["min_checking_buffer"]),
+    key="w_min_buf",
     step=250.0,
 )
 
@@ -286,7 +310,7 @@ with st.sidebar.expander("Manage One-off Events", expanded=False):
       cfg["one_offs"].pop(i)
       st.rerun()
 
-# Synchronize config back to session state
+# Synchronize current widget inputs back to session state configuration dictionary
 st.session_state.plan_config.update({
     "start_date": start_date.strftime("%Y-%m-%d"),
     "months": months_to_simulate,
