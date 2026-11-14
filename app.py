@@ -1,6 +1,5 @@
 import json
 from datetime import date, datetime
-from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -19,7 +18,7 @@ if "plan_config" not in st.session_state:
       "checking_apy": 0.5,
       "savings_balance": 0,
       "savings_apy": 4.0,
-      "min_checking_buffer": 2000.0,
+      "min_checking_buffer": 0,
       "recurring_flows": [
 
       ],
@@ -56,7 +55,6 @@ def handle_file_load():
       loaded_data = json.load(uploaded_file)
       st.session_state.plan_config = loaded_data
 
-      # Directly update widget session state keys so UI updates instantly
       st.session_state["w_start_date"] = datetime.strptime(
           loaded_data["start_date"], "%Y-%m-%d"
       ).date()
@@ -74,9 +72,8 @@ def handle_file_load():
 
 st.title("💰 Financial Future Planner")
 st.markdown(
-    "Simulate accounts with exact daily transactions, instant file loading via"
-    " callbacks, editable recurring flows, buffer sweeps, and monthly APY"
-    " compounding."
+    "Simulate accounts with exact daily transactions, $1,000 increment buffer"
+    " sweeps with upcoming transaction safety, and monthly APY compounding."
 )
 
 # --- 3. SIDEBAR: BROWSER FILE UPLOAD / DOWNLOAD ---
@@ -128,9 +125,9 @@ savings_apy = (
     / 100.0
 )
 
-st.sidebar.header("2. Transfer Rules")
+st.sidebar.header("Transfer Rules")
 min_checking_buffer = st.sidebar.number_input(
-    "Min Checking Buffer ($) [Sweep excess to savings]",
+    "Min Checking Buffer ($) [Sweep excess in $1k increments]",
     key="w_min_buf",
     step=250.0,
 )
@@ -317,6 +314,44 @@ def is_flow_due(d: date, f_start: date, f_end: date, freq: str) -> bool:
   return False
 
 
+def get_upcoming_outflows(
+    current_day, dates_list, parsed_flows, one_offs_list, lookahead_days=7
+):
+  """Calculates total expected expenditures in the next N days."""
+  total_out = 0.0
+  curr_idx = None
+  for idx, ts in enumerate(dates_list):
+    if ts.date() == current_day:
+      curr_idx = idx
+      break
+
+  if curr_idx is None:
+    return 0.0
+
+  for offset in range(1, lookahead_days + 1):
+    if curr_idx + offset < len(dates_list):
+      future_ts = dates_list[curr_idx + offset]
+      future_d = future_ts.date()
+
+      # Check recurring expenditures
+      for flow in parsed_flows:
+        if flow["type"] == "Expenditure" and is_flow_due(
+            future_d, flow["start_date"], flow["end_date"], flow["frequency"]
+        ):
+          total_out += flow["amount"]
+
+      # Check one-off expenditures
+      future_str = future_d.strftime("%Y-%m-%d")
+      for ev in one_offs_list:
+        if (
+            ev["date"] == future_str
+            and ev.get("type", "Expenditure") == "Expenditure"
+        ):
+          total_out += ev["amount"]
+
+  return total_out
+
+
 def run_simulation():
   total_days = int(months_to_simulate * 30.4375)
   end_date = start_date + pd.DateOffset(days=total_days)
@@ -344,33 +379,58 @@ def run_simulation():
 
   for i, ts in enumerate(dates):
     d = ts.date()
+    day_income = 0.0
+    day_expenditure = 0.0
+    day_transfer = 0.0  # Positive = to savings, Negative = from savings
 
     # 1. Apply Recurring Flows due on this exact day
     for flow in parsed_flows:
       if is_flow_due(d, flow["start_date"], flow["end_date"], flow["frequency"]):
         if flow["type"] == "Income":
           chk += flow["amount"]
+          day_income += flow["amount"]
         else:
           chk -= flow["amount"]
+          day_expenditure += flow["amount"]
 
     # 2. Apply One-off Events due on this exact day
     date_str = d.strftime("%Y-%m-%d")
     for ev in cfg["one_offs"]:
       if ev["date"] == date_str:
+        amt = ev["amount"]
         if ev.get("type", "Expenditure") == "Income":
-          chk += ev["amount"]
+          chk += amt
+          day_income += amt
         else:
-          chk -= ev["amount"]
+          chk -= amt
+          day_expenditure += amt
 
-    # 3. Apply daily transfer rules (checking buffer sweep / deficit pull)
+    # 3. Apply transfer rules ($1,000 increments + buffer safety lookahead)
     if chk > min_checking_buffer:
       excess = chk - min_checking_buffer
-      sav += excess
-      chk = min_checking_buffer
+      if excess >= 1000.0:
+        # Calculate raw $1,000 increment sweep amount
+        potential_sweep = (excess // 1000.0) * 1000.0
+
+        # Check upcoming 7-day outflows to ensure buffer safety
+        upcoming_bills = get_upcoming_outflows(
+            d, dates, parsed_flows, cfg["one_offs"], lookahead_days=7
+        )
+        safe_cash_after_sweep = (
+            chk - potential_sweep - upcoming_bills
+        )  # estimating checking position
+
+        # Only sweep if checking won't drop below min buffer after upcoming bills
+        if safe_cash_after_sweep >= min_checking_buffer:
+          sav += potential_sweep
+          chk -= potential_sweep
+          day_transfer = potential_sweep
     elif chk < 0:
+      # Deficit pull from savings
       deficit = abs(chk)
       sav -= deficit
       chk = 0.0
+      day_transfer = -deficit
 
     # 4. Apply monthly compound interest on the LAST day of each month
     is_last_day_of_month = False
@@ -388,6 +448,9 @@ def run_simulation():
     history.append(
         {
             "Date": ts,
+            "Income": round(day_income, 2),
+            "Expenditure": round(day_expenditure, 2),
+            "Transfer": round(day_transfer, 2),
             "Checking": round(chk, 2),
             "Savings": round(sav, 2),
             "Total Wealth": round(chk + sav, 2),
@@ -416,5 +479,5 @@ fig = px.line(
 fig.update_layout(hovermode="x unified")
 st.plotly_chart(fig, use_container_width=True)
 
-with st.expander("View Detailed Monthly Breakdown Table"):
+with st.expander("View Detailed Daily Transaction Breakdown Table"):
   st.dataframe(df_sim, use_container_width=True)
