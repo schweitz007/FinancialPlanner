@@ -75,7 +75,7 @@ if "w_start_date" not in st.session_state:
       cfg["start_date"], "%Y-%m-%d"
   ).date()
 if "w_months" not in st.session_state:
-  st.session_state["w_months"] = cfg["months"]
+  st.session_state["w_months"] = int(cfg["months"])
 if "w_chk_bal" not in st.session_state:
   st.session_state["w_chk_bal"] = float(cfg["checking_balance"])
 if "w_chk_apy" not in st.session_state:
@@ -87,37 +87,47 @@ if "w_sav_apy" not in st.session_state:
 if "w_min_buf" not in st.session_state:
   st.session_state["w_min_buf"] = float(cfg["min_checking_buffer"])
 
+
+# --- FILE UPLOADER CALLBACK ---
+def handle_file_load():
+  uploaded_file = st.session_state.get("plan_file_uploader")
+  if uploaded_file is not None:
+    try:
+      loaded_data = json.load(uploaded_file)
+      st.session_state.plan_config = loaded_data
+
+      # Directly update widget session state keys so UI updates instantly
+      st.session_state["w_start_date"] = datetime.strptime(
+          loaded_data["start_date"], "%Y-%m-%d"
+      ).date()
+      st.session_state["w_months"] = int(loaded_data.get("months", 12))
+      st.session_state["w_chk_bal"] = float(loaded_data["checking_balance"])
+      st.session_state["w_chk_apy"] = float(loaded_data["checking_apy"])
+      st.session_state["w_sav_bal"] = float(loaded_data["savings_balance"])
+      st.session_state["w_sav_apy"] = float(loaded_data["savings_apy"])
+      st.session_state["w_min_buf"] = float(
+          loaded_data["min_checking_buffer"]
+      )
+    except Exception as e:
+      st.sidebar.error(f"Error loading file: {e}")
+
+
 st.title("💰 Modern Financial Planner (Daily & Monthly Engine)")
 st.markdown(
-    "Simulate accounts with exact daily transactions, fully synchronized file"
-    " loading, editable recurring flows, buffer sweeps, and monthly APY"
+    "Simulate accounts with exact daily transactions, instant file loading via"
+    " callbacks, editable recurring flows, buffer sweeps, and monthly APY"
     " compounding."
 )
 
 # --- 3. SIDEBAR: BROWSER FILE UPLOAD / DOWNLOAD ---
 st.sidebar.header("6. Save / Load Plan")
 
-uploaded_file = st.sidebar.file_uploader("Load Plan JSON", type=["json"])
-if uploaded_file is not None:
-  try:
-    loaded_data = json.load(uploaded_file)
-    st.session_state.plan_config = loaded_data
-
-    # Synchronize widget session state keys so UI updates immediately
-    st.session_state["w_start_date"] = datetime.strptime(
-        loaded_data["start_date"], "%Y-%m-%d"
-    ).date()
-    st.session_state["w_months"] = loaded_data["months"]
-    st.session_state["w_chk_bal"] = float(loaded_data["checking_balance"])
-    st.session_state["w_chk_apy"] = float(loaded_data["checking_apy"])
-    st.session_state["w_sav_bal"] = float(loaded_data["savings_balance"])
-    st.session_state["w_sav_apy"] = float(loaded_data["savings_apy"])
-    st.session_state["w_min_buf"] = float(loaded_data["min_checking_buffer"])
-
-    st.sidebar.success("Plan loaded successfully!")
-    st.rerun()
-  except Exception as e:
-    st.sidebar.error(f"Error loading file: {e}")
+st.sidebar.file_uploader(
+    "Load Plan JSON",
+    type=["json"],
+    key="plan_file_uploader",
+    on_change=handle_file_load,
+)
 
 st.sidebar.markdown("---")
 
@@ -131,7 +141,7 @@ st.sidebar.download_button(
 
 cfg = st.session_state.plan_config
 
-# --- 4. SIDEBAR INPUTS (BOUND TO WIDGET SESSION STATE KEYS) ---
+# --- 4. SIDEBAR INPUTS (BOUND TO WIDGET KEYS) ---
 st.sidebar.header("1. Starting Conditions")
 start_date = st.sidebar.date_input(
     "Simulation Start Date", key="w_start_date"
