@@ -3,16 +3,11 @@ from datetime import date, datetime
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from pathlib import Path
-from platformdirs import user_data_dir
 
-# --- 1. PAGE CONFIG & STORAGE SETUP ---
+# --- 1. PAGE CONFIG & SETUP ---
 st.set_page_config(
-    page_title="Financial Planner", page_icon="📈", layout="wide"
+    page_title="Modern Financial Planner", page_icon="📈", layout="wide"
 )
-
-APP_NAME = "FinancialPlanner"
-SAVE_DIR = Path(user_data_dir(APP_NAME, appauthor=False, ensure_exists=True))
 
 # --- 2. SESSION STATE INITIALIZATION ---
 if "plan_config" not in st.session_state:
@@ -76,42 +71,34 @@ cfg = st.session_state.plan_config
 
 st.title("💰 Modern Financial Planner (Daily & Monthly Engine)")
 st.markdown(
-    "Simulate accounts with exact daily transactions, one-off incomes &"
-    " expenses, editable recurring flows, buffer sweeps, and monthly APY"
-    " compounding."
+    "Simulate accounts with exact daily transactions, browser file upload/save,"
+    " editable recurring flows, buffer sweeps, and monthly APY compounding."
 )
 
-# --- 3. SIDEBAR: LOCAL SAVE / LOAD ---
-st.sidebar.header("6. Local Save / Load")
-save_filename = st.sidebar.text_input("Filename to save", value="my_plan.json")
-if st.sidebar.button("Save Plan to Disk"):
-  if not save_filename.endswith(".json"):
-    save_filename += ".json"
-  file_path = SAVE_DIR / save_filename
+# --- 3. SIDEBAR: BROWSER FILE UPLOAD / DOWNLOAD ---
+st.sidebar.header("6. Save / Load Plan")
+
+# --- LOAD PLAN FROM FILE BROWSER ---
+uploaded_file = st.sidebar.file_uploader("Load Plan JSON", type=["json"])
+if uploaded_file is not None:
   try:
-    with open(file_path, "w") as f:
-      json.dump(st.session_state.plan_config, f, indent=2)
-    st.sidebar.success(f"Saved successfully to {file_path}!")
+    loaded_data = json.load(uploaded_file)
+    st.session_state.plan_config = loaded_data
+    st.sidebar.success("Plan loaded successfully!")
+    st.rerun()
   except Exception as e:
-    st.sidebar.error(f"Error saving file: {e}")
+    st.sidebar.error(f"Error loading file: {e}")
 
 st.sidebar.markdown("---")
 
-saved_files = [f.name for f in SAVE_DIR.glob("*.json")]
-if saved_files:
-  selected_file = st.sidebar.selectbox("Select Saved Plan", saved_files)
-  if st.sidebar.button("Load Selected Plan"):
-    file_path = SAVE_DIR / selected_file
-    try:
-      with open(file_path, "r") as f:
-        loaded_data = json.load(f)
-      st.session_state.plan_config = loaded_data
-      st.sidebar.success(f"Loaded '{selected_file}' successfully!")
-      st.rerun()
-    except Exception as e:
-      st.sidebar.error(f"Error loading file: {e}")
-else:
-  st.sidebar.info("No saved plans found in `saved_plans/` yet.")
+# --- SAVE / EXPORT PLAN TO FILE ---
+plan_json_str = json.dumps(st.session_state.plan_config, indent=2)
+st.sidebar.download_button(
+    label="Download Plan JSON",
+    data=plan_json_str,
+    file_name="financial_plan.json",
+    mime="application/json",
+)
 
 cfg = st.session_state.plan_config
 
@@ -119,8 +106,6 @@ cfg = st.session_state.plan_config
 st.sidebar.header("1. Starting Conditions")
 parsed_start_date = datetime.strptime(cfg["start_date"], "%Y-%m-%d").date()
 start_date = st.sidebar.date_input("Simulation Start Date", value=parsed_start_date)
-
-# Updated slider to step by 1 month (min 1 month, max 60 months)
 months_to_simulate = st.sidebar.slider(
     "Simulation Horizon (Months)", 1, 60, int(cfg.get("months", 12)), 1
 )
