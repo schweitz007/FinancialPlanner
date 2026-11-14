@@ -7,7 +7,7 @@ import streamlit as st
 
 # --- 1. PAGE CONFIG & SETUP ---
 st.set_page_config(
-    page_title="Modern Financial Planner", page_icon="📈", layout="wide"
+    page_title="Financial Planner", page_icon="📈", layout="wide"
 )
 
 # --- 2. SESSION STATE INITIALIZATION ---
@@ -15,56 +15,16 @@ if "plan_config" not in st.session_state:
   st.session_state.plan_config = {
       "start_date": str(date.today()),
       "months": 12,
-      "checking_balance": 3000.0,
+      "checking_balance": 0,
       "checking_apy": 0.5,
-      "savings_balance": 15000.0,
-      "savings_apy": 4.5,
+      "savings_balance": 0,
+      "savings_apy": 4.0,
       "min_checking_buffer": 2000.0,
       "recurring_flows": [
-          {
-              "name": "Salary",
-              "type": "Income",
-              "amount": 2250.0,
-              "frequency": "Bi-weekly",
-              "start_date": "2026-01-02",
-              "end_date": None,
-          },
-          {
-              "name": "Car Loan",
-              "type": "Expenditure",
-              "amount": 350.0,
-              "frequency": "Monthly",
-              "start_date": "2026-01-01",
-              "end_date": "2026-12-31",
-          },
-          {
-              "name": "Groceries",
-              "type": "Expenditure",
-              "amount": 150.0,
-              "frequency": "Weekly",
-              "start_date": "2026-01-01",
-              "end_date": None,
-          },
+
       ],
       "one_offs": [
-          {
-              "date": "2026-07-15",
-              "amount": 2500.0,
-              "description": "Work Bonus",
-              "type": "Income",
-          },
-          {
-              "date": "2026-12-15",
-              "amount": 1200.0,
-              "description": "Holiday Trip",
-              "type": "Expenditure",
-          },
-          {
-              "date": "2027-06-01",
-              "amount": 3500.0,
-              "description": "Car Repair",
-              "type": "Expenditure",
-          },
+
       ],
   }
 
@@ -112,7 +72,7 @@ def handle_file_load():
       st.sidebar.error(f"Error loading file: {e}")
 
 
-st.title("💰 Modern Financial Planner (Daily & Monthly Engine)")
+st.title("💰 Financial Future Planner")
 st.markdown(
     "Simulate accounts with exact daily transactions, instant file loading via"
     " callbacks, editable recurring flows, buffer sweeps, and monthly APY"
@@ -120,7 +80,7 @@ st.markdown(
 )
 
 # --- 3. SIDEBAR: BROWSER FILE UPLOAD / DOWNLOAD ---
-st.sidebar.header("6. Save / Load Plan")
+st.sidebar.header("Save / Load Plan")
 
 st.sidebar.file_uploader(
     "Load Plan JSON",
@@ -142,7 +102,7 @@ st.sidebar.download_button(
 cfg = st.session_state.plan_config
 
 # --- 4. SIDEBAR INPUTS (BOUND TO WIDGET KEYS) ---
-st.sidebar.header("1. Starting Conditions")
+st.sidebar.header("Starting Conditions")
 start_date = st.sidebar.date_input(
     "Simulation Start Date", key="w_start_date"
 )
@@ -176,7 +136,7 @@ min_checking_buffer = st.sidebar.number_input(
 )
 
 # --- RECURRING FLOWS MANAGER (WITH EDIT & DELETE) ---
-st.sidebar.header("3. Recurring Incomes & Expenditures")
+st.sidebar.header("Recurring Incomes & Expenditures")
 with st.sidebar.expander("Add New Recurring Flow", expanded=False):
   flow_name = st.text_input("Flow Name", value="Side Gig", key="flow_name")
   flow_type = st.selectbox("Type", ["Income", "Expenditure"], key="flow_type")
@@ -291,7 +251,7 @@ for i, flow in enumerate(cfg["recurring_flows"]):
     st.sidebar.markdown("---")
 
 # --- ONE-OFF EVENTS MANAGER (INCOME & EXPENDITURES) ---
-st.sidebar.header("4. One-off Events")
+st.sidebar.header("One-off Events")
 with st.sidebar.expander("Manage One-off Events", expanded=False):
   oo_desc = st.text_input("Description", value="Bonus", key="oo_desc")
   oo_type = st.selectbox("Type", ["Income", "Expenditure"], key="oo_type")
